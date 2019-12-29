@@ -35,23 +35,22 @@ dualuse.io - FINE DUAL USE TECHNOLOGIES
 `
 
 var bashTempl = `#!/bin/bash
+# Remove existing file
 rm -rf %s
-for (( i=0; i<%d; i++ ))
-do
-f=0
-while [ "$f" -le "4" ]; do
-l=` + "`%s`" + `
-if [ "` + "`expr length \\\"$l\\\"`" + `" -ne "0" ];
-then 
-f=5
-echo -n $l|base64 -d>>%s
-fi
-((f++))
-if [ "$f" -le "4" ]
-then
-sleep 1
-fi
-done
+
+# Loop thru DNS entries
+for ((i=0;i<%d;i++)); do
+	f=0
+	while [[ ${f} <= 4 ]]; do
+		l=` + "`%s`" + `
+		if [[ "` + "`expr length \\\"$l\\\"`" + `" -ne "0" ]]; then 
+			f=5; base64 -id <<< "${l}" >> %s;
+		fi
+		((f++));
+		if [[ ${f} <= 4 ]]; then
+			sleep 0.2;
+		fi
+	done
 done
 `
 
@@ -62,8 +61,10 @@ var servedFile = flag.String("file", "", "File to serve.")
 var useDig = flag.Bool("dig", true, "Use dig instead of nslookup?")
 var maxSize = flag.Int("max", 1000, "Maximum size of DNS reply - 500 may work better.")
 
-var digCmd = `dig +short  $i.%s TXT | tr -d "\n\" "`
-var nslookupCmd = `nslookup -q=TXT $i.%s | grep -v "^A" | tr -d "\n\" " | cut -d "=" -f 2-|tr -d "\n"`
+var resolver = flag.String("resolver", "", "Use specific resolver (private, local or fake domains names)")
+
+var digCmd = `dig +short  $i.%s TXT %s | tr -d "\n\" "`
+var nslookupCmd = `nslookup -q=TXT $i.%s %s | grep -v "^A" | tr -d "\n\" " | cut -d'=' -f2- | tr -d "\n"`
 
 var records = map[string]string{}
 
@@ -155,10 +156,13 @@ func main() {
 	}
 	fmt.Printf("Chunks loaded\n")
 
-	command := fmt.Sprintf(nslookupCmd, prefixedName)
+	command := fmt.Sprintf(nslookupCmd, prefixedName, resolver)
 
 	if *useDig {
-		command = fmt.Sprintf(digCmd, prefixedName)
+		if resolver != nil {
+			resolver := "@" + resolver
+		}
+		command = fmt.Sprintf(digCmd, prefixedName, resolver)
 	}
 
 	fmt.Printf(`
